@@ -2,6 +2,7 @@ export interface Lead {
     id: number;
     name: string;
     // Add other relevant fields based on the API response
+    stages_id: number;
 }
 
 export interface Pipeline {
