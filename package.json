@@ -1,5 +1,5 @@
 {
-    "name": "okocrm-api",
+    "name": "okocrm-gsheets-export",
     "version": "1.0.0",
     "description": "",
     "type": "module",
