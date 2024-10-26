@@ -21,6 +21,8 @@
         "axios": "^1.7.3",
         "debug": "^4.3.7",
         "dotenv": "^16.4.5",
+        "google-auth-library": "^9.14.2",
+        "google-spreadsheet": "^4.1.4",
         "keyv": "^5.1.0",
         "keyv-file": "^5.0.3",
         "lodash": "^4.17.21",

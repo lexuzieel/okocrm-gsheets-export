@@ -6,6 +6,8 @@ import Debug from "debug";
 import { Lead, Pipeline, User } from "./okocrm-api/types.js";
 import _ from "lodash";
 import { DateTime, DurationLike } from "luxon";
+import { GoogleSpreadsheet } from "google-spreadsheet";
+import { JWT } from "google-auth-library";
 
 dotenv.config();
 
@@ -54,10 +56,6 @@ const activeStages = stages.filter((stage) => {
     return activeStagesNames.includes(stage.name.toLocaleLowerCase().trim());
 });
 
-// const getPipelineById = (id: number) => {
-//     return pipelines.find((p: Pipeline) => p.id === id);
-// };
-
 const getLeads = async (duration: DurationLike = { days: 7 }) => {
     const result: Lead[] = [];
 
@@ -93,7 +91,8 @@ const getLeads = async (duration: DurationLike = { days: 7 }) => {
 
 const leads = await remember(
     "leads",
-    async () => await getLeads({ days: 7 }),
+    async () =>
+        await getLeads({ days: parseInt(process.env.EXPORT_DAYS || "") || 30 }),
     ms("1h")
 );
 
@@ -114,7 +113,28 @@ for (const lead of leads.filter((lead: Lead) => {
     );
 }
 
-const createEntryFromLead = (lead: Lead) => {
+type Entry = {
+    sheet: {
+        name: string;
+    };
+    data: {
+        id: number;
+        date: string;
+        manager: string;
+        client: string;
+        policy: string;
+        type: string;
+        policy_start: string;
+        insurer_company: string;
+        bank: string;
+        policy_amount: number;
+        agent_amount: number;
+        // discount: string;
+        agent_payment: boolean;
+    };
+};
+
+const createEntryFromLead = (lead: Lead): Entry => {
     const date = DateTime.fromMillis(lead.arrived_stage_at * 1000)
         .setLocale("ru-RU")
         .setZone("Europe/Moscow");
@@ -139,26 +159,29 @@ const createEntryFromLead = (lead: Lead) => {
             id: lead.id,
             date: date.toFormat("dd.MM.yyyy"),
             manager: user.full_name.short.split(/\s+/)[0],
-            client: _.get(lead, "contacts.0.name"),
-            policy: _.get(lead, "cf_8710"),
-            type: _.map(_.map(_.get(lead, "cf_8706"), "name"), (name) => {
-                if (name == "ЖИЗНЬ") {
-                    return "Ж";
-                } else if (name == "ИМУЩЕСТВО") {
-                    return "И";
-                }
+            client: _.get(lead, "contacts.0.name", "-"),
+            policy: _.get(lead, "cf_8710", "-"),
+            type: _.map(
+                _.map(_.get(lead, "cf_8706"), "name"),
+                (name: string) => {
+                    if (name == "ЖИЗНЬ") {
+                        return "Ж";
+                    } else if (name == "ИМУЩЕСТВО") {
+                        return "И";
+                    }
 
-                return name;
-            }).join(""),
+                    return name;
+                }
+            ).join(""),
             policy_start: policyStartDate.isValid
                 ? policyStartDate.toFormat("dd.MM.yyyy")
                 : "-",
             insurer_company:
-                insurer_type?.id == 13513
+                (insurer_type?.id == 13513
                     ? _.map(_.get(lead, "cf_8703"), "name").join(", ")
-                    : insurer_type?.name,
-            insurer_type: insurer_type?.name,
-            bank: bank?.name,
+                    : insurer_type?.name) || "-",
+            // insurer_type: insurer_type?.name || "-",
+            bank: bank?.name || "-",
             policy_amount: parseInt(_.get(lead, "cf_8712") || "") || 0,
             agent_amount: parseInt(lead.budget) || 0,
             agent_payment: _.get(lead, "cf_11080") != null,
@@ -166,7 +189,96 @@ const createEntryFromLead = (lead: Lead) => {
     };
 };
 
+const mapEntryToColumns = (entry: Entry) => {
+    return {
+        "№ ЗАЯВКИ": entry.data.id,
+        ДАТА: entry.data.date,
+        МЕНЕДЖЕР: entry.data.manager,
+        КЛИЕНТ: entry.data.client,
+        "№ ПОЛИСА": entry.data.policy,
+        "ТИП ПОЛИСА": entry.data.type,
+        "ДАТА НАЧАЛА": entry.data.policy_start,
+        СТРАХОВАЯ: entry.data.insurer_company,
+        БАНК: entry.data.bank,
+        "СУММА ПОЛИСА": entry.data.policy_amount,
+        "СУММА ПРИБЫЛИ": entry.data.agent_amount,
+        "Агент?": entry.data.agent_payment,
+    };
+};
+
+const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
+
+const jwt = new JWT({
+    email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+    key: process.env.GOOGLE_PRIVATE_KEY,
+    scopes: SCOPES,
+});
+
+const doc = new GoogleSpreadsheet(process.env.GOOGLE_SPREADSHEET_ID || "", jwt);
+
+await doc.loadInfo();
+
+type RowToInsert = {
+    sheetTitle: string;
+    columns: object;
+};
+
+const rowsToInsert: RowToInsert[] = [];
+
 for (const lead of leadsToExport) {
-    console.log(createEntryFromLead(lead));
-    break;
+    const entry = createEntryFromLead(lead);
+    const columns = mapEntryToColumns(entry);
+
+    const sheet = await (async () => {
+        if (doc.sheetsByTitle[entry.sheet.name]) {
+            // await doc.deleteSheet(doc.sheetsByTitle[entry.sheet.name].sheetId);
+            return doc.sheetsByTitle[entry.sheet.name];
+        }
+
+        const template = doc.sheetsByTitle["Шаблон"];
+
+        if (!template) {
+            throw new Error("Шаблон не найден");
+        }
+
+        const response = await template.copyToSpreadsheet(doc.spreadsheetId);
+
+        await doc.loadInfo();
+
+        const sheet = doc.sheetsById[response.data.sheetId];
+
+        await sheet.updateProperties({
+            title: entry.sheet.name,
+            index: 0,
+        });
+
+        await sheet.clearRows();
+
+        return sheet;
+    })();
+
+    rowsToInsert.push({ sheetTitle: sheet.title, columns });
 }
+
+_.each(_.groupBy(rowsToInsert, "sheetTitle"), async (rows, sheetTitle) => {
+    const sheet = doc.sheetsByTitle[sheetTitle];
+
+    await sheet.loadCells();
+
+    const sheetRows = await sheet.getRows();
+
+    const columns = _.filter(_.map(rows, "columns"), (row: any) => {
+        for (const sheetRow of sheetRows) {
+            if (sheetRow.get("№ ЗАЯВКИ") == row["№ ЗАЯВКИ"]) {
+                return false;
+            }
+        }
+
+        return true;
+    });
+
+    // @ts-ignore
+    await doc.sheetsByTitle[sheetTitle].addRows(columns);
+
+    debug(`Added ${columns.length} entries to sheet ${sheetTitle}`);
+});
