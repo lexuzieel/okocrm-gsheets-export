@@ -282,3 +282,8 @@ _.each(_.groupBy(rowsToInsert, "sheetTitle"), async (rows, sheetTitle) => {
 
     debug(`Added ${columns.length} entries to sheet ${sheetTitle}`);
 });
+
+debug("Done - waiting for restart");
+
+// Wait indefinitely
+await new Promise(() => {});
