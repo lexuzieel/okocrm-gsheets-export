@@ -260,28 +260,43 @@ for (const lead of leadsToExport) {
     rowsToInsert.push({ sheetTitle: sheet.title, columns });
 }
 
-_.each(_.groupBy(rowsToInsert, "sheetTitle"), async (rows, sheetTitle) => {
-    const sheet = doc.sheetsByTitle[sheetTitle];
+const tasks = _.map(
+    _.groupBy(rowsToInsert, "sheetTitle"),
+    async (rows, sheetTitle) => {
+        const debug = Debug("okocrm-api:gsheets");
 
-    await sheet.loadCells();
+        const sheet = doc.sheetsByTitle[sheetTitle];
 
-    const sheetRows = await sheet.getRows();
+        await sheet.loadCells();
 
-    const columns = _.filter(_.map(rows, "columns"), (row: any) => {
-        for (const sheetRow of sheetRows) {
-            if (sheetRow.get("№ ЗАЯВКИ") == row["№ ЗАЯВКИ"]) {
-                return false;
+        const sheetRows = await sheet.getRows();
+
+        const columns = _.filter(_.map(rows, "columns"), (row: any) => {
+            const entryId = row["№ ЗАЯВКИ"];
+
+            for (const sheetRow of sheetRows) {
+                const rowId = sheetRow.get("№ ЗАЯВКИ");
+
+                if (rowId == entryId) {
+                    return false;
+                }
             }
+
+            return true;
+        });
+
+        if (columns.length > 0) {
+            // @ts-ignore
+            await doc.sheetsByTitle[sheetTitle].addRows(columns);
         }
 
-        return true;
-    });
+        debug(
+            `Added ${columns.length} entries to the worksheet: ${sheetTitle}`
+        );
+    }
+);
 
-    // @ts-ignore
-    await doc.sheetsByTitle[sheetTitle].addRows(columns);
-
-    debug(`Added ${columns.length} entries to sheet ${sheetTitle}`);
-});
+await Promise.all(tasks);
 
 debug("Done - waiting for restart");
 
