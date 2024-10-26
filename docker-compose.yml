@@ -4,10 +4,11 @@ services:
             context: .
         restart: unless-stopped
         env_file: .env
-        container_name: okocrm-gsheets-export
+        container_name: okocrm-gsheets-export-exporter-1
     scheduler:
         image: docker:cli
+        env_file: .env
         volumes:
             - /var/run/docker.sock:/var/run/docker.sock
-        command: [ "/bin/sh", "-c", "while true; do sleep 10; docker restart okocrm-gsheets-export; done" ]
+        command: [ "/bin/sh", "-c", "while true; do sleep $SCHEDULER_INTERVAL; docker restart okocrm-gsheets-export-exporter-1; done" ]
         restart: unless-stopped

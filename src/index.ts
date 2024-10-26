@@ -17,7 +17,7 @@ const api = new OkoCRM({
     apiKey: process.env.OKOCRM_API_KEY || "",
 });
 
-const cacheDuration = ms("1d");
+const cacheDuration = ms(process.env.CACHE_DURATION || "30m");
 
 const users = await remember(
     "users",
