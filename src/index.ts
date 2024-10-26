@@ -100,7 +100,7 @@ debug(`Got ${leads.length} leads`);
 
 let leadsToExport: Lead[] = [];
 
-for (const lead of leads.filter((lead: Lead) => {
+for (const lead of _.orderBy(leads, "arrived_stage_at").filter((lead: Lead) => {
     return activeStages.map((stage) => stage.id).includes(lead.stages_id);
 })) {
     debug(`Fetching lead ${lead.id}`);
@@ -172,7 +172,9 @@ const createEntryFromLead = (lead: Lead): Entry => {
 
                     return name;
                 }
-            ).join(""),
+            )
+                .join(", ")
+                .replace("Ж, И", "ЖИ"),
             policy_start: policyStartDate.isValid
                 ? policyStartDate.toFormat("dd.MM.yyyy")
                 : "-",
