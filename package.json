@@ -6,7 +6,7 @@
     "module": "index.js",
     "scripts": {
         "build": "tsc",
-        "dev": "tsx --watch src/index.ts",
+        "dev": "tsx watch src/index.ts",
         "start": "node dist/index.js"
     },
     "keywords": [],
