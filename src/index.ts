@@ -365,13 +365,14 @@ const tasks = _.map(
 
 await Promise.all(tasks);
 
-debug("Done - waiting for shutdown signal");
+const restartInterval = process.env.RESTART_INTERVAL || "1m";
 
-const exit = async () => {
-    process.exit(0);
-};
+debug(`Done - waiting for ${restartInterval} until restart`);
 
-process.on("SIGINT", exit);
-process.on("SIGTERM", exit);
+await new Promise<void>((resolve) => {
+    setInterval(() => {
+        resolve();
+    }, ms(restartInterval));
+});
 
-process.stdin.resume();
+debug("Restarting...");
