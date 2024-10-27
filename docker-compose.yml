@@ -5,6 +5,7 @@ services:
         restart: unless-stopped
         env_file: .env
         container_name: okocrm-gsheets-export-exporter-1
+        stdin_open: true
     scheduler:
         image: docker:cli
         env_file: .env
