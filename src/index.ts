@@ -376,3 +376,5 @@ await new Promise<void>((resolve) => {
 });
 
 debug("Restarting...");
+
+process.exit(0);
