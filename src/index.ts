@@ -113,25 +113,28 @@ for (const lead of _.orderBy(leads, "arrived_stage_at").filter((lead: Lead) => {
     );
 }
 
+type EntryData = {
+    id: string;
+    date: string;
+    manager: string;
+    client: string;
+    policy: string;
+    type: string;
+    policy_start: string;
+    insurer_company: string;
+    bank: string;
+    policy_amount: number;
+    agent_amount: number;
+    // discount: string;
+    agent_payment: boolean;
+};
+
 type Entry = {
     sheet: {
         name: string;
     };
-    data: {
-        id: number;
-        date: string;
-        manager: string;
-        client: string;
-        policy: string;
-        type: string;
-        policy_start: string;
-        insurer_company: string;
-        bank: string;
-        policy_amount: number;
-        agent_amount: number;
-        // discount: string;
-        agent_payment: boolean;
-    };
+    data: EntryData;
+    secondPolicy?: EntryData;
 };
 
 const createEntryFromLead = (lead: Lead): Entry => {
@@ -147,64 +150,117 @@ const createEntryFromLead = (lead: Lead): Entry => {
         id: _.get(lead, "cf_8700"),
     });
 
-    const insurer_type = _.find(_.get(lead, "tabs.0.groups.2.fields.3.enums"), {
+    const insurerType = _.find(_.get(lead, "tabs.0.groups.2.fields.3.enums"), {
         id: _.get(lead, "cf_8717"),
     });
+
+    const hasSecondPolicy =
+        _.get(lead, "cf_8797") != null || _.get(lead, "cf_8798") != null;
+
+    const agent_amount = (() => {
+        if (hasSecondPolicy) {
+            return parseInt(_.get(lead, "cf_8798") || "") || 0;
+        }
+
+        return parseInt(lead.budget) || 0;
+    })();
+
+    const data = {
+        id: lead.id.toString(),
+        date: date.toFormat("dd.MM.yyyy"),
+        manager: user.full_name.short.split(/\s+/)[0],
+        client: _.get(lead, "contacts.0.name", "-"),
+        policy: _.get(lead, "cf_8710", "-"),
+        type: _.map(_.map(_.get(lead, "cf_8706"), "name"), (name: string) => {
+            if (name.toLocaleUpperCase() == "ЖИЗНЬ") {
+                return "Ж";
+            } else if (name.toLocaleUpperCase() == "ИМУЩЕСТВО") {
+                return "И";
+            }
+
+            return name;
+        })
+            .join(", ")
+            .replace("Ж, И", "ЖИ"),
+        policy_start: policyStartDate.isValid
+            ? policyStartDate.toFormat("dd.MM.yyyy")
+            : "-",
+        insurer_company:
+            (insurerType?.name == "Напрямую в Страховой"
+                ? _.map(_.get(lead, "cf_8703"), "name").join(", ")
+                : insurerType?.name) || "-",
+        // insurer_type: insurer_type?.name || "-",
+        bank: bank?.name || "-",
+        policy_amount: parseInt(_.get(lead, "cf_8712") || "") || 0,
+        agent_amount,
+        agent_payment: _.get(lead, "cf_11080") != null,
+    };
+
+    const secondPolicyStartDate = DateTime.fromSQL(_.get(lead, "cf_8792", ""));
+
+    const secondInsurerType = _.find(
+        _.get(lead, "tabs.1.groups.0.fields.3.enums"),
+        {
+            id: _.get(lead, "cf_8796"),
+        }
+    );
+
+    const secondInsurerCompany = _.find(
+        _.get(lead, "tabs.1.groups.0.fields.2.enums"),
+        {
+            id: _.get(lead, "cf_8795"),
+        }
+    );
+
+    const secondPolicy = {
+        ...data,
+        id: `${lead.id}-2`,
+        policy_start: secondPolicyStartDate.isValid
+            ? secondPolicyStartDate.toFormat("dd.MM.yyyy")
+            : "-",
+        insurer_company:
+            (secondInsurerType?.name == "Напрямую в Страховой"
+                ? secondInsurerCompany?.name
+                : secondInsurerType?.name) || "-",
+        type: _.map(_.map(_.get(lead, "cf_8799"), "name"), (name: string) => {
+            if (name.toLocaleUpperCase() == "ЖИЗНЬ") {
+                return "Ж";
+            } else if (name.toLocaleUpperCase() == "ИМУЩЕСТВО") {
+                return "И";
+            }
+
+            return name;
+        })
+            .join(", ")
+            .replace("Ж, И", "ЖИ"),
+        policy: _.get(lead, "cf_8794", "-"),
+        policy_amount: parseInt(_.get(lead, "cf_8793") || "") || 0,
+        agent_amount: parseInt(_.get(lead, "cf_8797") || "") || 0,
+    };
 
     return {
         sheet: {
             name: date.toFormat("LLLyy"),
         },
-        data: {
-            id: lead.id,
-            date: date.toFormat("dd.MM.yyyy"),
-            manager: user.full_name.short.split(/\s+/)[0],
-            client: _.get(lead, "contacts.0.name", "-"),
-            policy: _.get(lead, "cf_8710", "-"),
-            type: _.map(
-                _.map(_.get(lead, "cf_8706"), "name"),
-                (name: string) => {
-                    if (name == "ЖИЗНЬ") {
-                        return "Ж";
-                    } else if (name == "ИМУЩЕСТВО") {
-                        return "И";
-                    }
-
-                    return name;
-                }
-            )
-                .join(", ")
-                .replace("Ж, И", "ЖИ"),
-            policy_start: policyStartDate.isValid
-                ? policyStartDate.toFormat("dd.MM.yyyy")
-                : "-",
-            insurer_company:
-                (insurer_type?.id == 13513
-                    ? _.map(_.get(lead, "cf_8703"), "name").join(", ")
-                    : insurer_type?.name) || "-",
-            // insurer_type: insurer_type?.name || "-",
-            bank: bank?.name || "-",
-            policy_amount: parseInt(_.get(lead, "cf_8712") || "") || 0,
-            agent_amount: parseInt(lead.budget) || 0,
-            agent_payment: _.get(lead, "cf_11080") != null,
-        },
+        data,
+        secondPolicy: hasSecondPolicy ? secondPolicy : undefined,
     };
 };
 
-const mapEntryToColumns = (entry: Entry) => {
+const mapEntryToColumns = (data: EntryData) => {
     return {
-        "№ ЗАЯВКИ": entry.data.id,
-        ДАТА: entry.data.date,
-        МЕНЕДЖЕР: entry.data.manager,
-        КЛИЕНТ: entry.data.client,
-        "№ ПОЛИСА": entry.data.policy,
-        "ТИП ПОЛИСА": entry.data.type,
-        "ДАТА НАЧАЛА": entry.data.policy_start,
-        СТРАХОВАЯ: entry.data.insurer_company,
-        БАНК: entry.data.bank,
-        "СУММА ПОЛИСА": entry.data.policy_amount,
-        "СУММА ПРИБЫЛИ": entry.data.agent_amount,
-        "Агент?": entry.data.agent_payment,
+        "№ ЗАЯВКИ": data.id,
+        ДАТА: data.date,
+        МЕНЕДЖЕР: data.manager,
+        КЛИЕНТ: data.client,
+        "№ ПОЛИСА": data.policy,
+        "ТИП ПОЛИСА": data.type,
+        "ДАТА НАЧАЛА": data.policy_start,
+        СТРАХОВАЯ: data.insurer_company,
+        БАНК: data.bank,
+        "СУММА ПОЛИСА": data.policy_amount,
+        "СУММА ПРИБЫЛИ": data.agent_amount,
+        "Агент?": data.agent_payment,
     };
 };
 
@@ -229,7 +285,6 @@ const rowsToInsert: RowToInsert[] = [];
 
 for (const lead of leadsToExport) {
     const entry = createEntryFromLead(lead);
-    const columns = mapEntryToColumns(entry);
 
     const sheet = await (async () => {
         if (doc.sheetsByTitle[entry.sheet.name]) {
@@ -259,7 +314,17 @@ for (const lead of leadsToExport) {
         return sheet;
     })();
 
-    rowsToInsert.push({ sheetTitle: sheet.title, columns });
+    rowsToInsert.push({
+        sheetTitle: sheet.title,
+        columns: mapEntryToColumns(entry.data),
+    });
+
+    if (entry.secondPolicy) {
+        rowsToInsert.push({
+            sheetTitle: sheet.title,
+            columns: mapEntryToColumns(entry.secondPolicy),
+        });
+    }
 }
 
 const tasks = _.map(
