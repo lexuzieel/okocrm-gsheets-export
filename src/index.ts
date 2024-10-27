@@ -365,7 +365,13 @@ const tasks = _.map(
 
 await Promise.all(tasks);
 
-debug("Done - waiting for restart");
+debug("Done - waiting for shutdown signal");
 
-// Wait indefinitely
-await new Promise(() => {});
+const exit = async () => {
+    process.exit(0);
+};
+
+process.on("SIGINT", exit);
+process.on("SIGTERM", exit);
+
+process.stdin.resume();
