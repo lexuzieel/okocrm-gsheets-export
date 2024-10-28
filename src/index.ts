@@ -56,30 +56,37 @@ const activeStages = stages.filter((stage) => {
     return activeStagesNames.includes(stage.name.toLocaleLowerCase().trim());
 });
 
+const until = (duration: DurationLike) =>
+    DateTime.now().set({ hour: 0, minute: 0, second: 0 }).minus(duration);
+
+const exportLeadsUntil = until({
+    days: parseInt(process.env.EXPORT_DAYS || "") || 30,
+});
+
+const exportLeadsUntilTimestamp = exportLeadsUntil.toUnixInteger();
+
 const getLeads = async (duration: DurationLike = { days: 7 }) => {
     const result: Lead[] = [];
 
-    const until = DateTime.now()
-        .set({ hour: 0, minute: 0, second: 0 })
-        .minus(duration);
-
-    const timestamp = until.toUnixInteger();
-
     const d = debug.extend("leads");
 
-    d(`Fetching leads until ${until.toSQLDate()}`);
+    debug(`Fetching leads until ${exportLeadsUntil.toSQLDate()}`);
 
     let page = 1;
 
     while (true) {
-        d(`Fetching page ${page}`);
+        const leads = await remember(
+            `leads:page:${page}`,
+            async () => await api.leads.getLeads(page),
+            ms("1h")
+        );
 
-        const leads = await api.leads.getLeads(page++);
+        page++;
 
         result.push(...leads);
 
         if (
-            leads[leads.length - 1]?.arrived_stage_at <= timestamp ||
+            page >= (parseInt(process.env.EXPORT_PAGES || "") || 200) ||
             leads.length == 0
         ) {
             break;
@@ -89,21 +96,24 @@ const getLeads = async (duration: DurationLike = { days: 7 }) => {
     return result;
 };
 
-const leads = await remember(
-    "leads",
-    async () =>
-        await getLeads({ days: parseInt(process.env.EXPORT_DAYS || "") || 30 }),
-    ms("1h")
-);
+const leads = await getLeads(exportLeadsUntil);
 
 debug(`Got ${leads.length} leads`);
 
+const relevantLeads = _.orderBy(leads, "arrived_stage_at").filter(
+    (lead: Lead) => {
+        return (
+            activeStages.map((stage) => stage.id).includes(lead.stages_id) &&
+            lead.arrived_stage_at >= exportLeadsUntilTimestamp
+        );
+    }
+);
+
+debug(`Got ${relevantLeads.length} relevant leads (matching stage)`);
+
 let leadsToExport: Lead[] = [];
 
-for (const lead of _.orderBy(leads, "arrived_stage_at").filter((lead: Lead) => {
-    return activeStages.map((stage) => stage.id).includes(lead.stages_id);
-})) {
-    debug(`Fetching lead ${lead.id}`);
+for (const lead of relevantLeads) {
     leadsToExport.push(
         await remember(
             `leads:${lead.id}`,
