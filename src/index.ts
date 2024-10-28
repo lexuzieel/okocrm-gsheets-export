@@ -78,7 +78,7 @@ const getLeads = async (duration: DurationLike = { days: 7 }) => {
         const leads = await remember(
             `leads:page:${page}`,
             async () => await api.leads.getLeads(page),
-            ms("1h")
+            cacheDuration
         );
 
         page++;
