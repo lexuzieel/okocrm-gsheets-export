@@ -32,3 +32,9 @@ export const remember = async (
         return value;
     }
 };
+
+export const forget = async (key: string) => {
+    debug(`Clearing cache for key: ${key}`);
+
+    return await keyv.delete(key);
+};
