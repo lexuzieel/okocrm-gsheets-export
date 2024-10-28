@@ -176,6 +176,8 @@ const createEntryFromLead = (lead: Lead): Entry => {
                 return "Ж";
             } else if (name.toLocaleUpperCase() == "ИМУЩЕСТВО") {
                 return "И";
+            } else if (name.toLocaleUpperCase() == "ЖИЗНЬ; ИМУЩЕСТВО") {
+                return "ЖИ";
             }
 
             return name;
@@ -227,6 +229,8 @@ const createEntryFromLead = (lead: Lead): Entry => {
                 return "Ж";
             } else if (name.toLocaleUpperCase() == "ИМУЩЕСТВО") {
                 return "И";
+            } else if (name.toLocaleUpperCase() == "ЖИЗНЬ; ИМУЩЕСТВО") {
+                return "ЖИ";
             }
 
             return name;
