@@ -358,19 +358,40 @@ const tasks = _.map(
 
         const sheetRows = await sheet.getRows();
 
-        const columns = _.filter(_.map(rows, "columns"), (row: any) => {
+        let updated = 0;
+
+        const promises = _.map(_.map(rows, "columns"), async (row: any) => {
             const entryId = row["№ ЗАЯВКИ"];
 
             for (const sheetRow of sheetRows) {
                 const rowId = sheetRow.get("№ ЗАЯВКИ");
 
                 if (rowId == entryId) {
-                    return false;
+                    // Update the row
+                    const columns = _.find(_.map(rowsToInsert, "columns"), {
+                        "№ ЗАЯВКИ": entryId,
+                    });
+
+                    if (columns) {
+                        for (const column in columns) {
+                            // @ts-ignore
+                            sheetRow.set(column, columns[column]);
+                        }
+
+                        await sheetRow.save();
+
+                        updated++;
+                    }
+
+                    return null;
                 }
             }
 
-            return true;
+            return row;
         });
+
+        // Filter out null values
+        const columns = _.compact(await Promise.all(promises));
 
         if (columns.length > 0) {
             // @ts-ignore
@@ -380,6 +401,8 @@ const tasks = _.map(
         debug(
             `Added ${columns.length} entries to the worksheet: ${sheetTitle}`
         );
+
+        debug(`Updated ${updated} entries in the worksheet: ${sheetTitle}`);
     }
 );
 
