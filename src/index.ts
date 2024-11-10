@@ -137,6 +137,8 @@ type EntryData = {
     agent_amount: number;
     // discount: string;
     agent_payment: boolean;
+    pipeline: string;
+    stage: string;
 };
 
 type Entry = {
@@ -206,6 +208,8 @@ const createEntryFromLead = (lead: Lead): Entry => {
         policy_amount: parseInt(_.get(lead, "cf_8712") || "") || 0,
         agent_amount,
         agent_payment: _.get(lead, "cf_11080") != null,
+        pipeline: _.find(pipelines, { id: lead.pipeline_id })?.name,
+        stage: _.find(stages, { id: lead.stages_id })?.name,
     };
 
     const secondPolicyStartDate = DateTime.fromSQL(_.get(lead, "cf_8792", ""));
@@ -275,6 +279,8 @@ const mapEntryToColumns = (data: EntryData) => {
         "СУММА ПОЛИСА": data.policy_amount,
         "СУММА ПРИБЫЛИ": data.agent_amount,
         "Агент?": data.agent_payment,
+        ВОРОНКА: data.pipeline,
+        ЭТАП: data.stage,
     };
 };
 
