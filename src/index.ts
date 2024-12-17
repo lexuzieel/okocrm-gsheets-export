@@ -151,6 +151,8 @@ type EntryData = {
     agent_payment: boolean;
     pipeline: string;
     stage: string;
+    cashback: number;
+    control_date: string;
 };
 
 type Entry = {
@@ -178,16 +180,29 @@ const createEntryFromLead = (lead: Lead): Entry => {
         id: _.get(lead, "cf_8717"),
     });
 
+    // Оплачивать агенту?
+    const paidByAgent =
+        _.get(
+            _.find(_.get(lead, "tabs.0.groups.0.fields.3.enums"), {
+                id: _.get(lead, "cf_11080"),
+            }),
+            "name"
+        )?.toLocaleLowerCase() == "да";
+
     const hasSecondPolicy =
         _.get(lead, "cf_8797") != null || _.get(lead, "cf_8798") != null;
+
+    const cashback = parseInt(_.get(lead, "cf_14412", "")) || 0;
 
     const agent_amount = (() => {
         if (hasSecondPolicy) {
             return parseInt(_.get(lead, "cf_8798") || "") || 0;
         }
 
-        return parseInt(lead.budget) || 0;
+        return (parseInt(lead.budget) || 0) - cashback;
     })();
+
+    const controlDate = DateTime.fromSQL(_.get(lead, "cf_14410", ""));
 
     const data = {
         id: lead.id.toString(),
@@ -219,9 +234,13 @@ const createEntryFromLead = (lead: Lead): Entry => {
         bank: bank?.name || "-",
         policy_amount: parseInt(_.get(lead, "cf_8712") || "") || 0,
         agent_amount,
-        agent_payment: _.get(lead, "cf_11080") != null,
+        agent_payment: paidByAgent, // _.get(lead, "cf_11080") == 16907, // != null,
         pipeline: _.find(pipelines, { id: lead.pipeline_id })?.name,
         stage: _.find(stages, { id: lead.stages_id })?.name,
+        cashback,
+        control_date: controlDate.isValid
+            ? controlDate.toFormat("dd.MM.yyyy")
+            : "-",
     };
 
     const secondPolicyStartDate = DateTime.fromSQL(_.get(lead, "cf_8792", ""));
@@ -294,6 +313,27 @@ const mapEntryToColumns = (data: EntryData) => {
         "Агент?": data.agent_payment,
         ВОРОНКА: data.pipeline,
         ЭТАП: data.stage,
+        КЭШБЭК: data.cashback,
+        "Дата контроля": data.control_date,
+        "% прибыли": data.agent_amount / data.policy_amount,
+        "Дни до полиса":
+            data.policy_start != "-" && data.date != "-"
+                ? DateTime.fromFormat(data.policy_start, "dd.MM.yyyy")
+                      .diff(
+                          DateTime.fromFormat(data.date, "dd.MM.yyyy"),
+                          "days"
+                      )
+                      .days.toString()
+                : "-",
+        "Дни до даты контроля":
+            data.control_date != "-" && data.date != "-"
+                ? DateTime.fromFormat(data.control_date, "dd.MM.yyyy")
+                      .diff(
+                          DateTime.fromFormat(data.date, "dd.MM.yyyy"),
+                          "days"
+                      )
+                      .days.toString()
+                : "-",
     };
 };
 
@@ -390,7 +430,8 @@ const tasks = _.map(
                         Object.keys(columns),
                         "Сделка",
                         "№ ЗАЯВКИ",
-                        "ЭТАП"
+                        "ЭТАП",
+                        "% прибыли"
                     );
 
                     let current: any[string] = {};
@@ -407,12 +448,17 @@ const tasks = _.map(
                                             .replace(",", ".")
                                     );
                                 }
+                                case "КЭШБЭК":
+                                    return parseInt(sheetRow.get(key));
                                 case "Агент?":
                                     return sheetRow.get(key) == "TRUE";
                                 default: {
                                     const value = sheetRow.get(key);
 
-                                    if (value.length == 0) {
+                                    if (
+                                        typeof value == "string" &&
+                                        value.length == 0
+                                    ) {
                                         return null;
                                     }
 
@@ -437,17 +483,16 @@ const tasks = _.map(
                     if (tainted) {
                         debug(`Entry "${entryId}" is tainted - updating...`);
 
-                        console.log({
-                            columns,
-                            current,
-                        });
-
                         for (const column in columns) {
                             // @ts-ignore
                             sheetRow.set(column, columns[column]);
                         }
 
                         await sheetRow.save();
+
+                        await new Promise((resolve) =>
+                            setTimeout(resolve, Math.random() * 1000)
+                        );
 
                         updated++;
                     }
