@@ -8,6 +8,7 @@ import _ from "lodash";
 import { DateTime, DurationLike } from "luxon";
 import { GoogleSpreadsheet } from "google-spreadsheet";
 import { JWT } from "google-auth-library";
+import exp from "constants";
 
 dotenv.config();
 
@@ -56,28 +57,36 @@ const activeStages = stages.filter((stage) => {
     return activeStagesNames.includes(stage.name.toLocaleLowerCase().trim());
 });
 
-const until = (duration: DurationLike) =>
+const since = (duration: DurationLike) =>
     DateTime.now().set({ hour: 0, minute: 0, second: 0 }).minus(duration);
 
-const exportLeadsUntil = until({
+const exportLeadsSince = since({
     days: parseInt(process.env.EXPORT_DAYS || "") || 30,
 });
 
-const exportLeadsUntilTimestamp = exportLeadsUntil.toUnixInteger();
+const exportLeadsSinceTimestamp = exportLeadsSince.toUnixInteger();
+
+const exportPages = parseInt(process.env.EXPORT_PAGES || "") || -1;
 
 const getLeads = async (duration: DurationLike = { days: 7 }) => {
     const result: Lead[] = [];
 
     const d = debug.extend("leads");
 
-    debug(`Fetching leads until ${exportLeadsUntil.toSQLDate()}`);
+    debug(`Fetching leads since ${exportLeadsSince.toSQLDate()}`);
 
     let page = 1;
 
     while (true) {
         const leads = await remember(
             `leads:page:${page}`,
-            async () => await api.leads.getLeads(page),
+            async () => {
+                await new Promise((resolve) =>
+                    setTimeout(resolve, Math.random() * 1000)
+                );
+
+                return await api.leads.getLeads(page);
+            },
             cacheDuration
         );
 
@@ -85,10 +94,7 @@ const getLeads = async (duration: DurationLike = { days: 7 }) => {
 
         result.push(...leads);
 
-        if (
-            page >= (parseInt(process.env.EXPORT_PAGES || "") || 200) ||
-            leads.length == 0
-        ) {
+        if ((page >= exportPages && exportPages > 0) || leads.length == 0) {
             break;
         }
     }
@@ -96,7 +102,7 @@ const getLeads = async (duration: DurationLike = { days: 7 }) => {
     return result;
 };
 
-const leads = await getLeads(exportLeadsUntil);
+const leads = await getLeads(exportLeadsSince);
 
 debug(`Got ${leads.length} leads`);
 
@@ -104,7 +110,7 @@ const relevantLeads = _.orderBy(leads, "arrived_stage_at").filter(
     (lead: Lead) => {
         return (
             activeStages.map((stage) => stage.id).includes(lead.stages_id) &&
-            lead.arrived_stage_at >= exportLeadsUntilTimestamp
+            lead.arrived_stage_at >= exportLeadsSinceTimestamp
         );
     }
 );
@@ -117,7 +123,13 @@ for (const lead of relevantLeads) {
     leadsToExport.push(
         await remember(
             `leads:${lead.id}`,
-            async () => await api.leads.getLead(lead.id),
+            async () => {
+                await new Promise((resolve) =>
+                    setTimeout(resolve, Math.random() * 1000)
+                );
+
+                return await api.leads.getLead(lead.id);
+            },
             cacheDuration
         )
     );
@@ -267,12 +279,13 @@ const createEntryFromLead = (lead: Lead): Entry => {
 
 const mapEntryToColumns = (data: EntryData) => {
     return {
+        Сделка: `=HYPERLINK(CONCAT("https://strahov.okocrm.com/todos#lead-"; "${data.id}"); "Открыть 🡥")`,
         "№ ЗАЯВКИ": data.id,
         ДАТА: data.date,
         МЕНЕДЖЕР: data.manager,
         КЛИЕНТ: data.client,
         "№ ПОЛИСА": data.policy,
-        "ТИП ПОЛИСА": data.type,
+        "ТИП ПОЛИСА": data.type.length == 0 ? null : data.type,
         "ДАТА НАЧАЛА": data.policy_start,
         СТРАХОВАЯ: data.insurer_company,
         БАНК: data.bank,
@@ -368,11 +381,67 @@ const tasks = _.map(
 
                 if (rowId == entryId) {
                     // Update the row
-                    const columns = _.find(_.map(rowsToInsert, "columns"), {
-                        "№ ЗАЯВКИ": entryId,
-                    });
+                    const columns: any[string] =
+                        _.find(_.map(rowsToInsert, "columns"), {
+                            "№ ЗАЯВКИ": entryId,
+                        }) || {};
 
-                    if (columns) {
+                    const keys = _.without(
+                        Object.keys(columns),
+                        "Сделка",
+                        "№ ЗАЯВКИ",
+                        "ЭТАП"
+                    );
+
+                    let current: any[string] = {};
+
+                    for (const key of keys) {
+                        const value = (() => {
+                            switch (key) {
+                                case "СУММА ПОЛИСА":
+                                case "СУММА ПРИБЫЛИ": {
+                                    return parseFloat(
+                                        sheetRow
+                                            .get(key)
+                                            .replace(/\s+/g, "")
+                                            .replace(",", ".")
+                                    );
+                                }
+                                case "Агент?":
+                                    return sheetRow.get(key) == "TRUE";
+                                default: {
+                                    const value = sheetRow.get(key);
+
+                                    if (value.length == 0) {
+                                        return null;
+                                    }
+
+                                    return value;
+                                }
+                            }
+                        })();
+
+                        current[key] = value;
+                    }
+
+                    const tainted = (() => {
+                        for (const key of keys) {
+                            if (columns[key] != current[key]) {
+                                return true;
+                            }
+                        }
+
+                        return false;
+                    })();
+
+                    if (tainted) {
+                        debug(`Entry "${entryId}" is tainted - updating...`);
+
+                        console.log({
+                            columns,
+                            current,
+                        });
+
                         for (const column in columns) {
                             // @ts-ignore
                             sheetRow.set(column, columns[column]);
