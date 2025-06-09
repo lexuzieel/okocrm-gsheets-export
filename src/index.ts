@@ -173,6 +173,8 @@ type EntryData = {
     bank: string;
     policy_amount: number;
     agent_amount: number;
+    agent: string;
+    agent_source: string;
     // discount: string;
     agent_payment: boolean;
     pipeline: string;
@@ -216,6 +218,10 @@ const createEntryFromLead = (lead: Lead): Entry => {
             "name"
         )?.toLocaleLowerCase() == "да";
 
+    const оплачиватьАгенту = _.get(lead, "cf_14533") === 1;
+
+    let agent = "-";
+
     const rating = _.get(lead, "cf_20188");
 
     const hasSecondPolicy =
@@ -223,13 +229,35 @@ const createEntryFromLead = (lead: Lead): Entry => {
 
     const cashback = parseInt(_.get(lead, "cf_14412", "")) || 0;
 
-    const agent_amount = (() => {
+    let agent_amount = (() => {
         if (hasSecondPolicy) {
             return parseInt(_.get(lead, "cf_8798") || "") || 0;
         }
 
         return (parseInt(lead.budget) || 0) - cashback;
     })();
+
+    let agent_source = "-";
+
+    if (оплачиватьАгенту) {
+        const company = lead.companies?.[0];
+        const contact = lead.contacts?.[0];
+
+        agent_source = contact?.cf_8719 || "-";
+
+        if (company) {
+            agent = company.name;
+            agent_amount /= 2;
+        } else if (contact) {
+            const source = String(contact.cf_8719 || "")
+                .trim()
+                .replace(/^\+/, "");
+
+            if (source.length > 0 && source.startsWith("7")) {
+                agent_amount -= 0.05 * agent_amount;
+            }
+        }
+    }
 
     const controlDate = DateTime.fromSQL(_.get(lead, "cf_14410", ""));
 
@@ -264,6 +292,8 @@ const createEntryFromLead = (lead: Lead): Entry => {
         policy_amount: parseInt(_.get(lead, "cf_8712") || "") || 0,
         agent_amount,
         agent_payment: paidByAgent, // _.get(lead, "cf_11080") == 16907, // != null,
+        agent,
+        agent_source,
         pipeline: _.find(pipelines, { id: lead.pipeline_id })?.name,
         stage: _.find(stages, { id: lead.stages_id })?.name,
         cashback,
@@ -343,7 +373,9 @@ const mapEntryToColumns = (data: EntryData) => {
         БАНК: data.bank,
         "СУММА ПОЛИСА": data.policy_amount,
         "СУММА ПРИБЫЛИ": data.agent_amount,
-        "Агент?": data.agent_payment,
+        // "Агент?": data.agent_payment,
+        АГЕНТ: data.agent,
+        ИСТОЧНИК: data.agent_source,
         ВОРОНКА: data.pipeline,
         ЭТАП: data.stage,
         КЭШБЭК: data.cashback,
