@@ -8,7 +8,23 @@ export interface Lead {
     budget: string;
     arrived_stage_at: number;
     tabs: LeadTab[];
+    contacts?: LeadContact[];
+    companies?: LeadCompany[];
 }
+
+export type LeadContact = {
+    id: number;
+    name: string;
+    /**
+     * Источник
+     */
+    cf_8719: string;
+};
+
+export type LeadCompany = {
+    id: number;
+    name: string;
+};
 
 export interface LeadTab {
     id: number;
