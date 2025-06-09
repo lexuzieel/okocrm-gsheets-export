@@ -68,6 +68,36 @@ const exportLeadsSinceTimestamp = exportLeadsSince.toUnixInteger();
 
 const exportPages = parseInt(process.env.EXPORT_PAGES || "") || -1;
 
+const withExponentialBackoff = async <T>(
+    fn: () => Promise<T>,
+    maxRetries: number = 9,
+    baseDelay: number = 1000
+): Promise<T> => {
+    let lastError: Error;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+            return await fn();
+        } catch (error) {
+            lastError = error as Error;
+
+            if (attempt === maxRetries) {
+                throw lastError;
+            }
+
+            const delay = baseDelay * Math.pow(2, attempt);
+            debug(
+                `API call failed (attempt ${attempt + 1}/${
+                    maxRetries + 1
+                }), retrying in ${delay}ms: ${lastError.message}`
+            );
+            await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+    }
+
+    throw lastError!;
+};
+
 const getLeads = async (duration: DurationLike = { days: 7 }) => {
     const result: Lead[] = [];
 
@@ -81,11 +111,9 @@ const getLeads = async (duration: DurationLike = { days: 7 }) => {
         const leads = await remember(
             `leads:page:${page}`,
             async () => {
-                await new Promise((resolve) =>
-                    setTimeout(resolve, Math.random() * 1000)
+                return await withExponentialBackoff(() =>
+                    api.leads.getLeads(page)
                 );
-
-                return await api.leads.getLeads(page);
             },
             cacheDuration
         );
@@ -124,11 +152,9 @@ for (const lead of relevantLeads) {
         await remember(
             `leads:${lead.id}`,
             async () => {
-                await new Promise((resolve) =>
-                    setTimeout(resolve, Math.random() * 1000)
+                return await withExponentialBackoff(() =>
+                    api.leads.getLead(lead.id)
                 );
-
-                return await api.leads.getLead(lead.id);
             },
             cacheDuration
         )
