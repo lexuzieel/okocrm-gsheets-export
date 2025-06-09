@@ -555,9 +555,17 @@ const tasks = _.map(
 
                         await sheetRow.save();
 
-                        await new Promise((resolve) =>
-                            setTimeout(resolve, Math.random() * 1000)
-                        );
+                        await new Promise(async (resolve) => {
+                            const timeout = Math.round(
+                                Math.random() * 15000 + 1 * 1000
+                            );
+
+                            debug(
+                                `Waiting ${timeout}ms to avoid rate limiting`
+                            );
+
+                            setTimeout(resolve, timeout);
+                        });
 
                         updated++;
                     }
