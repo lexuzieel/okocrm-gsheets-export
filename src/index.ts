@@ -411,7 +411,7 @@ for (const lead of leadsToExport) {
             index: 0,
         });
 
-        await sheet.clearRows();
+        await sheet.clearRows({ start: 7 });
 
         return sheet;
     })();
@@ -436,6 +436,7 @@ const tasks = _.map(
 
         const sheet = doc.sheetsByTitle[sheetTitle];
 
+        await sheet.loadHeaderRow(6);
         await sheet.loadCells();
 
         const sheetRows = await sheet.getRows();
