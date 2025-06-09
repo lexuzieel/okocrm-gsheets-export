@@ -315,7 +315,10 @@ const createEntryFromLead = (lead: Lead): Entry => {
 
     return {
         sheet: {
-            name: date.toFormat("LLLyy"),
+            name:
+                date.toFormat("LLL").replace(".", "") +
+                "." +
+                date.toFormat("yy"),
         },
         data,
         secondPolicy: hasSecondPolicy ? secondPolicy : undefined,
