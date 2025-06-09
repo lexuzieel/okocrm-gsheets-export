@@ -179,6 +179,7 @@ type EntryData = {
     stage: string;
     cashback: number;
     control_date: string;
+    rating: string;
 };
 
 type Entry = {
@@ -214,6 +215,8 @@ const createEntryFromLead = (lead: Lead): Entry => {
             }),
             "name"
         )?.toLocaleLowerCase() == "да";
+
+    const rating = _.get(lead, "cf_20188");
 
     const hasSecondPolicy =
         _.get(lead, "cf_8797") != null || _.get(lead, "cf_8798") != null;
@@ -267,6 +270,7 @@ const createEntryFromLead = (lead: Lead): Entry => {
         control_date: controlDate.isValid
             ? controlDate.toFormat("dd.MM.yyyy")
             : "-",
+        rating: rating && String(rating).length > 0 ? rating : "-",
     };
 
     const secondPolicyStartDate = DateTime.fromSQL(_.get(lead, "cf_8792", ""));
@@ -363,6 +367,7 @@ const mapEntryToColumns = (data: EntryData) => {
                       )
                       .days.toString()
                 : "-",
+        Оценка: data.rating,
     };
 };
 
