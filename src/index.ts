@@ -237,14 +237,12 @@ const createEntryFromLead = (lead: Lead): Entry => {
         return (parseInt(lead.budget) || 0) - cashback;
     })();
 
-    let agent_source = "-";
+    const company = lead.companies?.[0];
+    const contact = lead.contacts?.[0];
+
+    const agent_source = contact?.cf_8719 || "-";
 
     if (оплачиватьАгенту) {
-        const company = lead.companies?.[0];
-        const contact = lead.contacts?.[0];
-
-        agent_source = contact?.cf_8719 || "-";
-
         if (company) {
             agent = company.name;
             agent_amount /= 2;
