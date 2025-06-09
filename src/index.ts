@@ -359,7 +359,7 @@ const createEntryFromLead = (lead: Lead): Entry => {
 
 const mapEntryToColumns = (data: EntryData) => {
     return {
-        Сделка: `=HYPERLINK(CONCAT("https://strahov.okocrm.com/todos#lead-"; "${data.id}"); "Открыть 🡥")`,
+        Сделка: `=HYPERLINK(CONCAT("https://strahov.okocrm.com/leads#lead-"; "${data.id}"); "Открыть 🡥")`,
         "№ ЗАЯВКИ": data.id,
         ДАТА: data.date,
         МЕНЕДЖЕР: data.manager,
