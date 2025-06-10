@@ -20,6 +20,8 @@ const api = new OkoCRM({
 
 const cacheDuration = ms(process.env.CACHE_DURATION || "30m");
 
+const headerRowIndex = parseInt(process.env.HEADER_ROW_INDEX || "8");
+
 const users = await remember(
     "users",
     async () => await api.users.getUsers(),
@@ -446,7 +448,7 @@ for (const lead of leadsToExport) {
             index: 0,
         });
 
-        await sheet.clearRows({ start: 7 });
+        await sheet.clearRows({ start: headerRowIndex + 1 });
 
         return sheet;
     })();
@@ -471,7 +473,7 @@ const tasks = _.map(
 
         const sheet = doc.sheetsByTitle[sheetTitle];
 
-        await sheet.loadHeaderRow(6);
+        await sheet.loadHeaderRow(headerRowIndex);
         await sheet.loadCells();
 
         const sheetRows = await sheet.getRows();
