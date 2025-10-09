@@ -1,4 +1,5 @@
 import dotenv from "dotenv";
+import crypto from "crypto";
 
 import { main } from "./main.js";
 import { CronJob } from "cron";
