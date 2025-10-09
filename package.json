@@ -19,6 +19,7 @@
         "@types/ms": "^0.7.34",
         "@types/node": "^20.9.1",
         "axios": "^1.7.3",
+        "cron": "^4.3.3",
         "debug": "^4.3.7",
         "dotenv": "^16.4.5",
         "google-auth-library": "^9.14.2",
