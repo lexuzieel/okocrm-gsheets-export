@@ -201,7 +201,11 @@ export const main = async () => {
             .setLocale("ru-RU")
             .setZone("Europe/Moscow");
 
-        const user = users.find((u: User) => u.id === lead.user_id);
+        const user = (users || []).find((u: User) => u.id === lead.user_id);
+
+        if (!user) {
+            throw new Error(`User ${lead.user_id} not found`);
+        }
 
         const policyStartDate = DateTime.fromSQL(_.get(lead, "cf_8705", ""));
 
@@ -269,7 +273,7 @@ export const main = async () => {
         const data = {
             id: lead.id.toString(),
             date: date.toFormat("dd.MM.yyyy"),
-            manager: user.full_name.short.split(/\s+/)[0],
+            manager: user.full_name?.short?.split(/\s+/)[0] ?? "",
             client: _.get(lead, "contacts.0.name", "-"),
             policy: _.get(lead, "cf_8710", "-"),
             type: _.map(
@@ -439,48 +443,52 @@ export const main = async () => {
     const rowsToInsert: RowToInsert[] = [];
 
     for (const lead of leadsToExport) {
-        const entry = createEntryFromLead(lead);
+        try {
+            const entry = createEntryFromLead(lead);
 
-        const sheet = await (async () => {
-            if (doc.sheetsByTitle[entry.sheet.name]) {
-                // await doc.deleteSheet(doc.sheetsByTitle[entry.sheet.name].sheetId);
-                return doc.sheetsByTitle[entry.sheet.name];
-            }
+            const sheet = await (async () => {
+                if (doc.sheetsByTitle[entry.sheet.name]) {
+                    // await doc.deleteSheet(doc.sheetsByTitle[entry.sheet.name].sheetId);
+                    return doc.sheetsByTitle[entry.sheet.name];
+                }
 
-            const template = doc.sheetsByTitle["Шаблон"];
+                const template = doc.sheetsByTitle["Шаблон"];
 
-            if (!template) {
-                throw new Error("Шаблон не найден");
-            }
+                if (!template) {
+                    throw new Error("Шаблон не найден");
+                }
 
-            const response = await template.copyToSpreadsheet(
-                doc.spreadsheetId
-            );
+                const response = await template.copyToSpreadsheet(
+                    doc.spreadsheetId
+                );
 
-            await doc.loadInfo();
+                await doc.loadInfo();
 
-            const sheet = doc.sheetsById[response.data.sheetId];
+                const sheet = doc.sheetsById[response.data.sheetId];
 
-            await sheet.updateProperties({
-                title: entry.sheet.name,
-                index: 0,
-            });
+                await sheet.updateProperties({
+                    title: entry.sheet.name,
+                    index: 0,
+                });
 
-            await sheet.clearRows({ start: headerRowIndex + 1 });
+                await sheet.clearRows({ start: headerRowIndex + 1 });
 
-            return sheet;
-        })();
+                return sheet;
+            })();
 
-        rowsToInsert.push({
-            sheetTitle: sheet.title,
-            columns: mapEntryToColumns(entry.data),
-        });
-
-        if (entry.secondPolicy) {
             rowsToInsert.push({
                 sheetTitle: sheet.title,
-                columns: mapEntryToColumns(entry.secondPolicy),
+                columns: mapEntryToColumns(entry.data),
             });
+
+            if (entry.secondPolicy) {
+                rowsToInsert.push({
+                    sheetTitle: sheet.title,
+                    columns: mapEntryToColumns(entry.secondPolicy),
+                });
+            }
+        } catch (error) {
+            console.error(error);
         }
     }
 
