@@ -273,7 +273,7 @@ export const main = async () => {
         const data = {
             id: lead.id.toString(),
             date: date.toFormat("dd.MM.yyyy"),
-            manager: user.full_name?.short?.split(/\s+/)[0] ?? "",
+            manager: user.name?.split(/\s+/)[1] ?? "",
             client: _.get(lead, "contacts.0.name", "-"),
             policy: _.get(lead, "cf_8710", "-"),
             type: _.map(
